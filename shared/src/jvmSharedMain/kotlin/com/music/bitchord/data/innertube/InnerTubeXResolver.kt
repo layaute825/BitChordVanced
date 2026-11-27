@@ -238,6 +238,7 @@ object InnerTubeXResolver {
         requireM4a: Boolean = false,
         uploaded: Boolean = false,
         premium: Boolean = false,
+        allowHls: Boolean = false,
     ): Extracted? {
         innerTube.cookie = Innertube.cookie
         innerTube.visitorData = Innertube.ensureVisitorData()
@@ -248,7 +249,9 @@ object InnerTubeXResolver {
             videoId = videoId,
             hints = ContentHints(isUploaded = true.takeIf { uploaded })
                 .withPremium(premiumOpus)
-                .withStreamCapabilities(allowHls = false, allowSabr = false, allowBoundedRange = true),
+                // Live broadcasts expose a rolling HLS playlist; bounded
+                // progressive URLs are only short windows and eventually end.
+                .withStreamCapabilities(allowHls = allowHls, allowSabr = false, allowBoundedRange = true),
             excludedClients = excludedFor(videoId) + skipClients,
             audioQuality = when {
                 requireM4a -> AudioQuality.MP4
