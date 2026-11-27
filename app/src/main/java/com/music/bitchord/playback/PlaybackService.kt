@@ -1612,6 +1612,29 @@ class PlaybackService : MediaLibraryService() {
                 dataSpec.uri.getQueryParameter(AutomixAnalysisSource.OPUS_QUERY_PARAMETER),
             )
             if (!analysisRead) runBlocking(about) { DirectSourceGate.awaitOpen(videoId) }
+            // Durationless video rows are marked as live candidates when their
+            // MediaItem is built. Bypass module substitution and the normal
+            // progressive-audio resolver: a live broadcast must use HLS from
+            // the first request, or its short rolling window reaches EOF.
+            if (dataSpec.uri.getQueryParameter(LIVE_AUDIO_ONLY_PARAMETER) == "1") {
+                QualityUpgrade.forget(videoId)
+                StreamChoice.forget(videoId)
+                NerdStats.clearDeclared(videoId)
+                NerdStats.recordSource(videoId, "YouTube Live (audio only)")
+                val streamUrl = try {
+                    runBlocking(about) {
+                        withTimeout(RESOLVE_TIMEOUT_MS) { StreamResolver.resolveLiveAudio(videoId) }
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    throw java.io.IOException("Live HLS resolution timed out for $videoId", e)
+                }
+                val headers = StreamResolver.mediaHeadersFor(streamUrl)
+                TrackLog.d("BitChord", "serving live broadcast as audio-only HLS", about = videoId)
+                return@Resolver dataSpec.buildUpon()
+                    .setUri(Uri.parse(streamUrl))
+                    .setHttpRequestHeaders(headers)
+                    .build()
+            }
             // An explicit rollback is not a preference for a different
             // candidate: it means this exact YouTube rendition, immediately.
             // Answer it before StreamChoice, the module race and a pending
