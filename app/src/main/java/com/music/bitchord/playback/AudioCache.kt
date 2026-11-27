@@ -1183,6 +1183,20 @@ object AudioCache {
      * through, and anything already there is served without a request.
      * Local file and content URIs bypass disk caching to prevent redundant writes.
      */
+    /**
+     * Live HLS playlists are rolling indexes, not immutable audio files.
+     * Caching the virtual watch URI would freeze the first playlist response,
+     * then make the live player reach EOF when those listed segments expire.
+     * Cache the finite HLS segments normally, but always fetch the playlist.
+     */
+    internal fun shouldBypassPlaybackCache(
+        scheme: String?,
+        authority: String?,
+        liveAudioOnly: Boolean,
+    ): Boolean =
+        scheme == "file" || scheme == "content" ||
+            (scheme == "bitchord" && authority == "watch" && liveAudioOnly)
+
     fun playbackFactory(upstream: DataSource.Factory): DataSource.Factory = DataSource.Factory {
         val cacheDs = cacheFactory(upstream).createDataSource()
         val upstreamDs = upstream.createDataSource()
@@ -1196,7 +1210,13 @@ object AudioCache {
 
             override fun open(dataSpec: DataSpec): Long {
                 val scheme = dataSpec.uri.scheme
-                activeDs = if (scheme == "file" || scheme == "content") {
+                val liveAudioOnly = dataSpec.uri.getQueryParameter(LIVE_AUDIO_ONLY_PARAMETER) == "1"
+                activeDs = if (
+                    shouldBypassPlaybackCache(scheme, dataSpec.uri.authority, liveAudioOnly)
+                ) {
+                    // The HLS manifest changes every few seconds. It must be
+                    // fetched afresh, otherwise the cache replays the opening
+                    // snapshot and the live stream ends at its old last segment.
                     upstreamDs
                 } else {
                     settleDirectEntry(dataSpec.uri)
