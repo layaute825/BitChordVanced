@@ -2,6 +2,8 @@ package com.music.bitchord.data.model
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class ModelsTest {
     @Test
@@ -10,6 +12,47 @@ class ModelsTest {
         assertEquals(3_723_000L, "1:02:03".durationMillis())
         assertEquals(0L, "not-a-duration".durationMillis())
         assertEquals(0L, null.durationMillis())
+    }
+
+    @Test
+    fun durationlessVideoRowsAreTreatedAsLiveCandidates() {
+        assertTrue(
+            Song(
+                videoId = "live",
+                title = "Live radio",
+                artist = "Channel",
+                thumbnailUrl = null,
+                durationText = "LIVE",
+                isVideo = true,
+            ).isDurationlessVideo(),
+        )
+        assertTrue(
+            Song(
+                videoId = "unknown",
+                title = "Unknown runtime",
+                artist = "Channel",
+                thumbnailUrl = null,
+                isVideo = true,
+            ).isDurationlessVideo(),
+        )
+        assertFalse(
+            Song(
+                videoId = "music-video",
+                title = "Finite video",
+                artist = "Artist",
+                thumbnailUrl = null,
+                durationText = "3:45",
+                isVideo = true,
+            ).isDurationlessVideo(),
+        )
+        assertFalse(
+            Song(
+                videoId = "audio",
+                title = "Audio",
+                artist = "Artist",
+                thumbnailUrl = null,
+            ).isDurationlessVideo(),
+        )
     }
 
     @Test
