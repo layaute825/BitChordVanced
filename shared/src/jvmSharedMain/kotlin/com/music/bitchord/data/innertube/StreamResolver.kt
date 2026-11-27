@@ -463,16 +463,7 @@ object StreamResolver {
                     timed("$videoId live HLS") { liveHlsStream(videoId) }
                         ?: timed("$videoId NewPipe live HLS") { newPipeStream(videoId, ::pickForQuality) }
                 }
-                else -> {
-                    // A bounded googlevideo URL is only the current window of a live
-                    // broadcast. Never fall back to it: a live must use its HLS
-                    // playlist, including when InnerTubeX could not expose HLS.
-                    timed("$videoId live HLS") { liveHlsStream(videoId) }
-                        ?: run {
-                            TrackLog.w(TAG, "InnerTubeX returned a live window but no HLS URL for $videoId; retrying through NewPipe")
-                            timed("$videoId NewPipe live HLS") { newPipeStream(videoId, ::pickForQuality) }
-                        }
-                }
+
             }
         } catch (e: CancellationException) {
             throw e
