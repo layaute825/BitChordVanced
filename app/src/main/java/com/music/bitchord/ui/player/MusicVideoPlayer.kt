@@ -37,6 +37,7 @@ import com.music.bitchord.data.Http
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.innertube.InnerTubeXResolver
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.isDurationlessVideo
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.playback.ChunkedDataSource
 import com.music.bitchord.playback.MusicOnlyPlayback
@@ -325,7 +326,8 @@ object MusicVideoEngine {
     private fun wanted(): Song? {
         val song = controller?.currentMediaItem?.toSong() ?: return null
         return song.takeIf {
-            it.isVideo && it.videoId !in noPicture && MusicOnlyPlayback.showsPicture(it.videoId)
+            it.isVideo && !it.isDurationlessVideo() &&
+                it.videoId !in noPicture && MusicOnlyPlayback.showsPicture(it.videoId)
         }
     }
 
