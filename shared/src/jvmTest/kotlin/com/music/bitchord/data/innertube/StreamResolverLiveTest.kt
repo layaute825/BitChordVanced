@@ -35,4 +35,19 @@ class StreamResolverLiveTest {
         assertFalse(StreamResolver.isHlsMimeType("audio/webm"))
     }
 
+    @Test
+    fun playerResponseLiveFlagWorksWithoutLiveUrlParameters() {
+        val ordinaryLookingUrl =
+            "https://rr1---sn-example.googlevideo.com/videoplayback?expire=1900000000&itag=251"
+
+        assertTrue(StreamResolver.isLiveStream(isLiveFromMetadata = true, url = ordinaryLookingUrl))
+        assertFalse(StreamResolver.isLiveStream(isLiveFromMetadata = false, url = ordinaryLookingUrl))
+        assertTrue(
+            StreamResolver.isLiveStream(
+                isLiveFromMetadata = false,
+                url = "https://rr1---sn-example.googlevideo.com/videoplayback?live=1",
+            ),
+        )
+    }
+
 }
