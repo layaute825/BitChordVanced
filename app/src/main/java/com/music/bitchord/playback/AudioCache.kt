@@ -1191,11 +1191,19 @@ object AudioCache {
      */
     internal fun shouldBypassPlaybackCache(
         scheme: String?,
-        authority: String?,
+        host: String?,
+        path: String?,
         liveAudioOnly: Boolean,
     ): Boolean =
         scheme == "file" || scheme == "content" ||
-            (scheme == "bitchord" && authority == "watch" && liveAudioOnly)
+            (scheme == "bitchord" && host == "watch" && liveAudioOnly) ||
+            // HLS refreshes use the resolved manifest URL after the first open,
+            // so they no longer carry the virtual bitchord:// marker. YouTube
+            // serves those rolling manifests from this host; finite segments
+            // come from ordinary googlevideo hosts and remain cacheable.
+            (scheme in setOf("http", "https") &&
+                host == "manifest.googlevideo.com" &&
+                path?.contains("/api/manifest/") == true)
 
     fun playbackFactory(upstream: DataSource.Factory): DataSource.Factory = DataSource.Factory {
         val cacheDs = cacheFactory(upstream).createDataSource()
@@ -1212,7 +1220,7 @@ object AudioCache {
                 val scheme = dataSpec.uri.scheme
                 val liveAudioOnly = dataSpec.uri.getQueryParameter(LIVE_AUDIO_ONLY_PARAMETER) == "1"
                 activeDs = if (
-                    shouldBypassPlaybackCache(scheme, dataSpec.uri.authority, liveAudioOnly)
+                    shouldBypassPlaybackCache(scheme, dataSpec.uri.host, dataSpec.uri.path, liveAudioOnly)
                 ) {
                     // The HLS manifest changes every few seconds. It must be
                     // fetched afresh, otherwise the cache replays the opening
