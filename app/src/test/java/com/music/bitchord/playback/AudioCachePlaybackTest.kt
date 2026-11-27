@@ -12,7 +12,6 @@ class AudioCachePlaybackTest {
             AudioCache.shouldBypassPlaybackCache(
                 scheme = "bitchord",
                 host = "watch",
-                path = "/",
                 liveAudioOnly = true,
             ),
         )
@@ -24,7 +23,6 @@ class AudioCachePlaybackTest {
             AudioCache.shouldBypassPlaybackCache(
                 scheme = "bitchord",
                 host = "watch",
-                path = "/",
                 liveAudioOnly = false,
             ),
         )
@@ -36,7 +34,6 @@ class AudioCachePlaybackTest {
             AudioCache.shouldBypassPlaybackCache(
                 scheme = "bitchord",
                 host = "source",
-                path = "/",
                 liveAudioOnly = true,
             ),
         )
@@ -44,7 +41,6 @@ class AudioCachePlaybackTest {
             AudioCache.shouldBypassPlaybackCache(
                 scheme = "https",
                 host = "rr1.googlevideo.com",
-                path = "/videoplayback",
                 liveAudioOnly = false,
             ),
         )
@@ -56,7 +52,6 @@ class AudioCachePlaybackTest {
             AudioCache.shouldBypassPlaybackCache(
                 scheme = "https",
                 host = "manifest.googlevideo.com",
-                path = "/api/manifest/hls_playlist/123",
                 liveAudioOnly = false,
             ),
         )
@@ -72,7 +67,7 @@ class AudioCachePlaybackTest {
 
     @Test
     fun localFilesContinueToBypassDiskCache() {
-        assertTrue(AudioCache.shouldBypassPlaybackCache("file", null, null, false))
-        assertTrue(AudioCache.shouldBypassPlaybackCache("content", null, null, false))
+        assertTrue(AudioCache.shouldBypassPlaybackCache("file", null, false))
+        assertTrue(AudioCache.shouldBypassPlaybackCache("content", null, false))
     }
 }
