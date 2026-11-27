@@ -1150,7 +1150,10 @@ class CrossfadeController(
         // analysis and cueing are deliberately never applied to either side
         // of a transition involving a video row.
         if (currentItem.isVideoOrigin || nextItem.isVideoOrigin) {
-            Log.d(TAG, "Automix cannot process a video-origin item; using the configured crossfade")
+            if (lastPlanVerdict != "video-fallback") {
+                lastPlanVerdict = "video-fallback"
+                Log.d(TAG, "Automix cannot process a video-origin item; using the configured crossfade")
+            }
             scheduleAutomixFallback(duration, markerOnly)
             return
         }
@@ -1290,7 +1293,6 @@ class CrossfadeController(
 
         if (markerOnly) return
         if (plan.blocked) {
-            Log.d(TAG, "Automix declined ${currentItem.mediaId}->${nextItem.mediaId}: ${plan.reason}; using crossfade")
             scheduleAutomixFallback(duration)
             return
         }
@@ -1299,7 +1301,6 @@ class CrossfadeController(
         if (fade <= 0L) {
             // GAPLESS is an intentional planner decision, not a failed mix.
             if (plan.transitionStyle != TransitionStyle.GAPLESS) {
-                Log.d(TAG, "Automix produced no usable fade for ${currentItem.mediaId}->${nextItem.mediaId}; using crossfade")
                 scheduleAutomixFallback(duration)
             }
             return
@@ -4057,10 +4058,8 @@ class CrossfadeController(
         const val TAG = "BitChordCrossfade"
 
         /**
-         * Used only before a pair has been analysed, or when the evidence is
-         * too weak for more than a plain fade — see [considerSmartTransition].
-         * Once real analysis lands, the overlap is sized from tempo and
-         * structure instead and this is never read.
+         * Default fixed crossfade used while Automix is waiting for analysis,
+         * or when it cannot plan a mix and the manual crossfade is set to Auto.
          */
         const val DEFAULT_SMART_FALLBACK_SECONDS = 6.0
 

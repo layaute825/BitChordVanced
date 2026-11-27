@@ -653,7 +653,7 @@
     <string name="version_cut_fetching">récupération</string>
     <string name="version_cut_measuring">analyse</string>
     <string name="version_cut_aligned">aligné</string>
-    <string name="automix_enabled_subtitle">Crée les transitions à partir des morceaux et utilise votre durée de fondu en secours quand il ne peut pas les mixer.</string>
+    <string name="automix_enabled_subtitle">Crée les transitions à partir des morceaux et utilise votre durée de fondu quand un morceau ne peut pas être mixé.</string>
     <string name="automix_disabled_subtitle">Utilise la durée de fondu définie ci-dessus à chaque changement de morceau.</string>
     <string name="automix_models_downloading">Téléchargement d\'Automix (%1$d Mo)… %2$d%%. Les morceaux s\'enchaînent en fondu normal jusqu\'à la fin.</string>
     <string name="automix_model">Modèle Automix</string>

@@ -936,7 +936,7 @@
     <string name="version_cut_fetching">fetching</string>
     <string name="version_cut_measuring">analyzing</string>
     <string name="version_cut_aligned">aligned</string>
-    <string name="automix_enabled_subtitle">Builds transitions from the tracks themselves, falling back to your crossfade setting when it can't.</string>
+    <string name="automix_enabled_subtitle">Builds transitions from the tracks themselves, falling back to your crossfade setting when a track can't be mixed.</string>
     <string name="automix_disabled_subtitle">Uses the crossfade duration set above for each track change.</string>
     <string name="automix_models_downloading">Downloading Automix (%1$d MB)… %2$d%%. Songs crossfade normally until it finishes.</string>
     <string name="automix_model">Automix model</string>
