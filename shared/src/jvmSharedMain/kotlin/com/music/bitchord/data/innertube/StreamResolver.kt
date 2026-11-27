@@ -447,6 +447,15 @@ object StreamResolver {
                 innerTubeXStreamAllowingUploads(videoId, allowHls = true)
             }
             when {
+                found == null && isLiveVideo(videoId) -> {
+                    // InnerTubeX already confirmed this video is live, even if
+                    // every client only exposed a bounded audio window. Keep
+                    // that verdict while the last-resort extractor looks up
+                    // the live playlist; never treat it as a normal song.
+                    TrackLog.w(TAG, "InnerTubeX confirmed $videoId is live but no client supplied HLS; asking NewPipe for the live playlist")
+                    timed("$videoId live HLS") { liveHlsStream(videoId) }
+                        ?: timed("$videoId NewPipe live HLS") { newPipeStream(videoId, ::pickForQuality) }
+                }
                 found == null -> {
                     TrackLog.w(TAG, "InnerTubeX found no usable stream for $videoId; falling back to extraction")
                     timed("$videoId newPipeStream") { newPipeStream(videoId, ::pickForQuality) }
@@ -1210,7 +1219,8 @@ object StreamResolver {
                     "https://www.youtube.com/watch?v=$videoId",
                 )
                 extractor.fetchPage()
-                val live = extractor.streamType == StreamType.LIVE_STREAM ||
+                val live = isLiveVideo(videoId) ||
+                    extractor.streamType == StreamType.LIVE_STREAM ||
                     extractor.streamType == StreamType.AUDIO_LIVE_STREAM
                 extractor.hlsUrl.takeIf { live && it.isNotBlank() }?.let {
                     TrackLog.d(TAG, "live stream $videoId served from its HLS playlist")
@@ -1307,7 +1317,8 @@ object StreamResolver {
                 "https://www.youtube.com/watch?v=$videoId",
             )
             extractor.fetchPage()
-            val live = extractor.streamType == StreamType.LIVE_STREAM ||
+            val live = isLiveVideo(videoId) ||
+                extractor.streamType == StreamType.LIVE_STREAM ||
                 extractor.streamType == StreamType.AUDIO_LIVE_STREAM
             if (live) {
                 // YouTube lives are delivered as a rolling HLS playlist. A
