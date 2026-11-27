@@ -632,6 +632,14 @@ object StreamResolver {
             TrackLog.w(TAG, "no stream for $videoId when asked as an upload")
             return null
         }
+        if (allowHls && found.isLive && !isHlsMimeType(found.mimeType)) {
+            rememberLiveVideo(videoId)
+            TrackLog.w(
+                TAG,
+                "InnerTubeX ${found.profileId} returned only a bounded live upload window for $videoId",
+            )
+            return null
+        }
         val verdict = timed("$videoId InnerTubeX ${found.profileId} upload probe") {
             probe(found.url, found.mimeType)
         }
