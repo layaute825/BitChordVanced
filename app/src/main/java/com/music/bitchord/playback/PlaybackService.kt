@@ -1878,11 +1878,24 @@ class PlaybackService : MediaLibraryService() {
             // track's bytes it is fetching; this is the seam where both are in
             // hand. See [StreamContainer].
             streamResolver.resolveDataSpec(dataSpec).also { resolved ->
-                mediaIdIn(dataSpec.uri)?.let { StreamContainer.served(it, resolved.uri.toString()) }
+                val resolvedUrl = resolved.uri.toString()
+                // The virtual bitchord:// item has no extension, and YouTube's
+                // live HLS URL may not either. Carry the resolver's actual MIME
+                // through to Media3 so the playlist is opened by HlsMediaSource,
+                // never by the progressive audio source.
+                StreamResolver.manifestMimeTypeFor(resolvedUrl)?.let { mime ->
+                    val transport = when (mime.substringBefore(';').trim().lowercase()) {
+                        "application/x-mpegurl", "application/vnd.apple.mpegurl", "audio/mpegurl" -> "hls"
+                        "application/dash+xml" -> "dash"
+                        else -> null
+                    }
+                    transport?.let { StreamContainer.declare(resolvedUrl, it) }
+                }
+                mediaIdIn(dataSpec.uri)?.let { StreamContainer.served(it, resolvedUrl) }
                 // The same seam tells the cache whose file it is writing, which
                 // decides whether the entry outlives the track — see
                 // [AudioCache.Origin].
-                AudioCache.recordServed(dataSpec, resolved.uri.toString())
+                AudioCache.recordServed(dataSpec, resolvedUrl)
             }
         }
         // Read-ahead resolves streams through the same chain the player does.
