@@ -295,6 +295,9 @@ fun playingRowMatcher(rows: List<Song>, current: Song?): (Song) -> Boolean {
  */
 fun Song.durationMillis(): Long = durationText.durationMillis()
 
+/** A video row with no finite runtime; live broadcasts must be audio-only. */
+fun Song.isDurationlessVideo(): Boolean = isVideo && durationMillis() == 0L
+
 /** As [Song.durationMillis], for a `M:SS` or `H:MM:SS` string on its own. */
 fun String?.durationMillis(): Long {
     val parts = this?.trim()?.takeIf { it.isNotEmpty() }?.split(":") ?: return 0L
