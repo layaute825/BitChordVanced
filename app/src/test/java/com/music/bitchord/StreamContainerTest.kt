@@ -34,6 +34,17 @@ class StreamContainerTest {
     }
 
     @Test
+    fun `declared hls mime identifies extensionless playlist urls`() {
+        val playlist = "https://manifest.googlevideo.com/api/manifest/hls_playlist?id=live"
+        StreamContainer.declare(playlist, "hls")
+
+        assertEquals(
+            "application/x-mpegURL",
+            StreamContainer.manifestMimeOf(playlist),
+        )
+    }
+
+    @Test
     fun `non-manifest mime does not force a source rebuild`() {
         val original = "bitchord://watch?v=iQnRCdtECl8"
 
