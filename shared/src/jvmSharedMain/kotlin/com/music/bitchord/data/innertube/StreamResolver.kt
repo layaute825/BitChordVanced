@@ -310,7 +310,11 @@ object StreamResolver {
     suspend fun resolveLiveAudio(videoId: String): String {
         init
         rememberLiveVideo(videoId)
-        recent.remove(videoId)
+        recent[videoId]?.let { cached ->
+            val fresh = MonotonicClock.nowMs() - cached.at < URL_TTL_MS
+            if (fresh && manifestMimeTypes.containsKey(cached.url)) return cached.url
+            recent.remove(videoId, cached)
+        }
         unplayable.remove(videoId)
 
         val stream = timed("$videoId forced live HLS") {
