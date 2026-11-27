@@ -59,7 +59,6 @@ class AudioCachePlaybackTest {
             AudioCache.shouldBypassPlaybackCache(
                 scheme = "https",
                 host = "rr1.googlevideo.com",
-                path = "/videoplayback/segment",
                 liveAudioOnly = false,
             ),
         )
