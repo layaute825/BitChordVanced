@@ -52,6 +52,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
@@ -4175,6 +4176,20 @@ class PlaybackService : MediaLibraryService() {
      * the same on-disk cache the other is playing out of rather than
      * re-resolving a stream URL for audio that is already local.
      */
+    /**
+     * The session player is audio-only. Music-video pictures have their own
+     * silent player in MusicVideoPlayer; keeping video tracks disabled here
+     * also stops a YouTube live HLS master playlist from downloading its
+     * separate video rendition when only its audio is wanted.
+     */
+    private fun audioOnlyTrackSelector() = DefaultTrackSelector(this).apply {
+        setParameters(
+            buildUponParameters()
+                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
+                .build(),
+        )
+    }
+
     private fun buildPlayer(
         spatial: SpatialAudioProcessor,
         equalizer: EqualizerProcessor,
@@ -4182,6 +4197,7 @@ class PlaybackService : MediaLibraryService() {
         loudness: LoudnessProcessor,
         ownsSession: Boolean,
     ): ExoPlayer = ExoPlayer.Builder(this)
+        .setTrackSelector(audioOnlyTrackSelector())
         .setRenderersFactory(silenceSkippingRenderers(spatial, equalizer, filter, loudness))
         .setMediaSourceFactory(requireNotNull(mediaSourceFactory))
         .setLoadControl(farBufferingLoadControl())
@@ -6066,6 +6082,7 @@ class PlaybackService : MediaLibraryService() {
      * player.
      */
     private fun buildAuditionPlayer(meter: BandwidthMeter): ExoPlayer = ExoPlayer.Builder(this)
+        .setTrackSelector(audioOnlyTrackSelector())
         .setRenderersFactory(FfmpegFallbackRenderersFactory(this))
         .setMediaSourceFactory(requireNotNull(mediaSourceFactory))
         .setBandwidthMeter(meter)
