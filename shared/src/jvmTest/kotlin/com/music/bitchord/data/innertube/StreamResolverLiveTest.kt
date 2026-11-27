@@ -28,4 +28,11 @@ class StreamResolverLiveTest {
         )
         assertFalse(StreamResolver.isLiveUrl("not a url"))
     }
+    @Test
+    fun recognizesHlsManifestMimeTypes() {
+        assertTrue(StreamResolver.isHlsMimeType("application/x-mpegURL"))
+        assertTrue(StreamResolver.isHlsMimeType("application/vnd.apple.mpegurl"))
+        assertFalse(StreamResolver.isHlsMimeType("audio/webm"))
+    }
+
 }
