@@ -1409,4 +1409,6 @@
     <string name="drive_backup_row_subtitle">모든 기기에서 Replay 백업 및 동기화</string>
     <string name="drive_over_cellular">모바일 데이터로 동기화</string>
     <string name="drive_over_cellular_subtitle">끄면 자동 동기화가 Wi-Fi를 기다립니다</string>
+    <string name="automix_fallback_auto">Auto</string>
+    <string name="automix_fallback_crossfade_subtitle">Automix가 트랙을 분석하거나 믹스할 수 없을 때 사용됩니다. Auto는 6초 크로스페이드를 사용합니다。</string>
 </resources>

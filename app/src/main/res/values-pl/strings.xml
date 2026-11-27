@@ -1602,4 +1602,6 @@
     <string name="drive_backup_row_subtitle">Kopia i synchronizacja Replay na wszystkich urządzeniach</string>
     <string name="drive_over_cellular">Synchronizuj przez dane komórkowe</string>
     <string name="drive_over_cellular_subtitle">Gdy wyłączone, automatyczne synchronizacje czekają na Wi-Fi</string>
+    <string name="automix_fallback_auto">Auto</string>
+    <string name="automix_fallback_crossfade_subtitle">Używane, gdy Automix nie może przeanalizować ani zmiksować utworu. Auto używa 6-sekundowego przenikania.</string>
 </resources>

@@ -203,6 +203,8 @@
     <string name="blocking">Bloquant</string>
     <string name="crossfade">Fondu enchaîné</string>
     <string name="crossfade_subtitle">Fait fondre une piste dans la suivante</string>
+    <string name="automix_fallback_auto">Auto</string>
+    <string name="automix_fallback_crossfade_subtitle">Utilisé quand Automix ne peut pas analyser ou mixer un morceau. Auto applique un fondu de 6 secondes.</string>
     <string name="automix">Automix [BÊTA]</string>
     <string name="automix_overview">Vue d\'ensemble d\'Automix</string>
     <string name="skip_silence">Ignorer les silences</string>
@@ -651,8 +653,8 @@
     <string name="version_cut_fetching">récupération</string>
     <string name="version_cut_measuring">analyse</string>
     <string name="version_cut_aligned">aligné</string>
-    <string name="automix_enabled_subtitle">Chronomètre et mélange chaque transition à partir des morceaux eux-mêmes. Désactivez-le si le téléphone chauffe ou si la lecture saccade.</string>
-    <string name="automix_disabled_subtitle">Chronomètre et mélange les transitions automatiquement, sans curseur. Les performances peuvent varier sur les appareils plus lents.</string>
+    <string name="automix_enabled_subtitle">Crée les transitions à partir des morceaux et utilise votre durée de fondu quand un morceau ne peut pas être mixé.</string>
+    <string name="automix_disabled_subtitle">Utilise la durée de fondu définie ci-dessus à chaque changement de morceau.</string>
     <string name="automix_models_downloading">Téléchargement d\'Automix (%1$d Mo)… %2$d%%. Les morceaux s\'enchaînent en fondu normal jusqu\'à la fin.</string>
     <string name="automix_model">Modèle Automix</string>
     <string name="automix_model_missing">Non téléchargé. Automix le récupère quand vous l\'activez, ou téléchargez-le maintenant.</string>
