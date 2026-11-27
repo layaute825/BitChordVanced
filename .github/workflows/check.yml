@@ -42,9 +42,8 @@ jobs:
 
       - run: chmod +x gradlew
 
-      - name: Tests
-        run: ./gradlew testDevDebugUnitTest
-
+      # Build and upload first so an unrelated unit-test failure cannot
+      # prevent a usable debug APK from being produced for this PR.
       - name: Build the dev APK
         run: ./gradlew assembleDevDebug
 
@@ -53,6 +52,9 @@ jobs:
         with:
           name: bitchord-dev-debug
           path: app/build/outputs/apk/dev/debug/*.apk
+
+      - name: Tests
+        run: ./gradlew testDevDebugUnitTest
 
       - name: Upload test reports
         if: failure()
