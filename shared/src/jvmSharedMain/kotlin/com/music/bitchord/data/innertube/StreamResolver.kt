@@ -278,9 +278,12 @@ object StreamResolver {
     suspend fun resolve(videoId: String): String {
         init
 
-        recent[videoId]
-            ?.takeIf { MonotonicClock.nowMs() - it.at < URL_TTL_MS }
-            ?.let { return it.url }
+        recent[videoId]?.let { cached ->
+            val fresh = MonotonicClock.nowMs() - cached.at < URL_TTL_MS
+            val safeForKnownLive = !isLiveVideo(videoId) || manifestMimeTypes.containsKey(cached.url)
+            if (fresh && safeForKnownLive) return cached.url
+            if (isLiveVideo(videoId)) recent.remove(videoId, cached)
+        }
 
         // A verdict, not a failure: asking again cannot change the answer, so
         // every caller after the first is told so without a request being sent.
@@ -293,6 +296,35 @@ object StreamResolver {
         // real figure is ever known.
         NerdStats.onStreamPicked(videoId, stream.kbps)
         stream.loudnessDb?.let { loudness[videoId] = it }
+        remember(videoId, stream)
+        return stream.url
+    }
+
+    /**
+     * Resolves an explicitly durationless video row as a live HLS source only.
+     *
+     * This path must never fall back to a progressive googlevideo URL: those
+     * are rolling windows and end after a few seconds. The caller also marks
+     * the MediaItem as HLS before Media3 constructs its source.
+     */
+    suspend fun resolveLiveAudio(videoId: String): String {
+        init
+        rememberLiveVideo(videoId)
+        recent.remove(videoId)
+        unplayable.remove(videoId)
+
+        val stream = timed("$videoId forced live HLS") {
+            liveHlsStream(videoId, assumeLive = true)
+        } ?: throw IOException("YouTube did not provide a live HLS playlist for $videoId")
+
+        val verdict = timed("$videoId forced live HLS probe") {
+            probe(stream.url, stream.mimeType)
+        }
+        if (verdict != Probe.OK) {
+            throw IOException("YouTube live HLS playlist for $videoId is not playable: $verdict")
+        }
+
+        NerdStats.onStreamPicked(videoId, stream.kbps)
         remember(videoId, stream)
         return stream.url
     }
@@ -443,18 +475,21 @@ object StreamResolver {
     private suspend fun resolveUncached(videoId: String): Stream {
         val resolveStart = MonotonicClock.nowMs()
         val stream = try {
-            val found = timed("$videoId InnerTubeX") {
-                innerTubeXStreamAllowingUploads(videoId, allowHls = true)
+            val found = if (isLiveVideo(videoId)) {
+                null
+            } else {
+                timed("$videoId InnerTubeX") {
+                    innerTubeXStreamAllowingUploads(videoId, allowHls = true)
+                }
             }
             when {
-                found == null && isLiveVideo(videoId) -> {
-                    // InnerTubeX already confirmed this video is live, even if
-                    // every client only exposed a bounded audio window. Keep
-                    // that verdict while the last-resort extractor looks up
-                    // the live playlist; never treat it as a normal song.
-                    TrackLog.w(TAG, "InnerTubeX confirmed $videoId is live but no client supplied HLS; asking NewPipe for the live playlist")
-                    timed("$videoId live HLS") { liveHlsStream(videoId) }
-                        ?: timed("$videoId NewPipe live HLS") { newPipeStream(videoId, ::pickForQuality) }
+                isLiveVideo(videoId) -> {
+                    // A confirmed live is always served from a rolling HLS
+                    // playlist. Do not let a missing playlist fall through to
+                    // NewPipe's ordinary progressive-audio extraction.
+                    TrackLog.w(TAG, "$videoId is marked live; requiring its HLS playlist")
+                    timed("$videoId live HLS") { liveHlsStream(videoId, assumeLive = true) }
+                        ?: throw IOException("Confirmed live broadcast $videoId has no HLS playlist")
                 }
                 found == null -> {
                     TrackLog.w(TAG, "InnerTubeX found no usable stream for $videoId; falling back to extraction")
@@ -1220,14 +1255,17 @@ object StreamResolver {
      * or has none. Media3 plays it through `HlsMediaSource` — the `.m3u8` ending
      * is what [com.music.bitchord.playback.StreamContainer.manifestMimeOf] reads.
      */
-    private suspend fun liveHlsStream(videoId: String): Stream? = try {
+    private suspend fun liveHlsStream(
+        videoId: String,
+        assumeLive: Boolean = false,
+    ): Stream? = try {
         extractionGate.withLock {
             withContext(Dispatchers.IO) {
                 val extractor = ServiceList.YouTube.getStreamExtractor(
                     "https://www.youtube.com/watch?v=$videoId",
                 )
                 extractor.fetchPage()
-                val live = isLiveVideo(videoId) ||
+                val live = assumeLive || isLiveVideo(videoId) ||
                     extractor.streamType == StreamType.LIVE_STREAM ||
                     extractor.streamType == StreamType.AUDIO_LIVE_STREAM
                 extractor.hlsUrl.takeIf { live && it.isNotBlank() }?.let {
@@ -1449,8 +1487,6 @@ object StreamResolver {
         val url = stream.url
         if (stream.isLive || isLiveUrl(url) || isHlsMimeType(stream.mimeType)) {
             rememberLiveVideo(videoId)
-        } else {
-            liveVideoIds.remove(videoId)
         }
         if (isHlsMimeType(stream.mimeType)) {
             if (manifestMimeTypes.size >= MAX_REMEMBERED * 2) manifestMimeTypes.clear()
