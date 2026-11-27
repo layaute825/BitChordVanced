@@ -23,6 +23,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -31,11 +32,13 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.metrolist.innertubex.extraction.StreamResolveException
 import com.music.bitchord.data.Http
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.innertube.InnerTubeXResolver
+import com.music.bitchord.data.innertube.StreamResolver
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.playback.ChunkedDataSource
@@ -76,6 +79,7 @@ import kotlin.math.roundToInt
 object MusicVideoEngine {
 
     private const val TAG = "MusicVideo"
+    private const val LIVE_HLS_PROFILE = "newpipe-live-hls"
 
     /** Past this the picture jumps to the audio; under it, its rate is nudged. */
     private const val SEEK_DRIFT_MS = 450L
@@ -392,9 +396,36 @@ object MusicVideoEngine {
             if (plain != null) return plain
             TrackLog.d(TAG, "video: nothing asked plainly; asking as age-restricted", about = videoId)
         }
-        return withContext(Dispatchers.IO) {
-            InnerTubeXResolver.extractVideo(videoId, cap, skip, ageRestricted = true)
-        }?.also { ageGated += videoId }
+        val ageRestricted = try {
+            withContext(Dispatchers.IO) {
+                InnerTubeXResolver.extractVideo(videoId, cap, skip, ageRestricted = true)
+            }
+        } catch (e: StreamResolveException) {
+            if (e.reason !in ESCALATED_REASONS) throw e
+            null
+        }
+        if (ageRestricted != null) {
+            ageGated += videoId
+            return ageRestricted
+        }
+
+        // InnerTubeX deliberately declines the short-lived googlevideo video
+        // window for a live broadcast. Ask NewPipe for the broadcast's HLS
+        // playlist instead, and let Media3 select its video rendition.
+        val live = withContext(Dispatchers.IO) {
+            StreamResolver.resolveLiveHlsStream(videoId)
+        } ?: return null
+        TrackLog.d(TAG, "video: using live HLS playlist", about = videoId)
+        return InnerTubeXResolver.VideoStream(
+            videoId = videoId,
+            url = live.url,
+            width = 1920,
+            height = 1080,
+            mimeType = live.mimeType,
+            headers = emptyMap(),
+            heights = listOf(1080),
+            profileId = LIVE_HLS_PROFILE,
+        )
     }
 
     private fun load(videoId: String) {
@@ -434,13 +465,26 @@ object MusicVideoEngine {
             val exo = player ?: return@launch
             val upstream = OkHttpDataSource.Factory(Http.client)
                 .setDefaultRequestProperties(stream.headers)
-            val source = ProgressiveMediaSource.Factory(ChunkedDataSource.Factory(upstream, CHUNK_BYTES))
-                .createMediaSource(MediaItem.fromUri(stream.url))
+            val liveHls = stream.profileId == LIVE_HLS_PROFILE ||
+                stream.mimeType.contains("mpegurl", ignoreCase = true) ||
+                stream.url.substringBefore('?').endsWith(".m3u8", ignoreCase = true)
+            val mediaItem = MediaItem.Builder()
+                .setUri(stream.url)
+                .apply { if (liveHls) setMimeType(MimeTypes.APPLICATION_M3U8) }
+                .build()
+            val source = if (liveHls) {
+                HlsMediaSource.Factory(upstream).createMediaSource(mediaItem)
+            } else {
+                ProgressiveMediaSource.Factory(ChunkedDataSource.Factory(upstream, CHUNK_BYTES))
+                    .createMediaSource(mediaItem)
+            }
             if (stream.aspect > 0f) _aspect.value = stream.aspect
             _quality.value = _quality.value.copy(heights = stream.heights, activeHeight = stream.height)
-            loadedProfile = stream.profileId
+            loadedProfile = stream.profileId.takeUnless { it == LIVE_HLS_PROFILE }
             val start = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L
-            exo.setMediaSource(source, start + seekLeadMs)
+            // Live HLS has a sliding window, so start at the manifest's live
+            // default position rather than seeking to a stale VOD timestamp.
+            if (liveHls) exo.setMediaSource(source) else exo.setMediaSource(source, start + seekLeadMs)
             exo.playWhenReady = controller?.isPlaying == true
             exo.prepare()
             lastSeekAt = System.currentTimeMillis()
