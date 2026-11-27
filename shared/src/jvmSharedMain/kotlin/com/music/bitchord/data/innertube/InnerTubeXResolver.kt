@@ -335,6 +335,13 @@ object InnerTubeXResolver {
             audioQuality = AudioQuality.LOW,
             clientPlaybackNonce = generateClientPlaybackNonce(),
         ) ?: return null
+        // PlayerResponse metadata is authoritative. URL flags are not always
+        // present on YouTube's live HLS renditions, so do not rely on them
+        // when deciding whether the separate picture player may start.
+        if (stream.mediaMetadata?.isLive == true) {
+            TrackLog.d(TAG, "skipping live video rendition for $videoId; playback is audio-only", about = videoId)
+            return null
+        }
         // A live broadcast's video-only URL is a window that ends in seconds,
         // like its audio one; no picture beats a frozen one.
         val url = stream.videoUrl?.takeUnless(StreamResolver::isLiveUrl) ?: return null
