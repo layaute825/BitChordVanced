@@ -1565,4 +1565,6 @@
     <string name="drive_backup_row_subtitle">Backup e sincronização do Replay entre seus dispositivos</string>
     <string name="drive_over_cellular">Sincronizar usando dados móveis</string>
     <string name="drive_over_cellular_subtitle">Quando desativado, as sincronizações automáticas aguardam o Wi-Fi</string>
+    <string name="automix_fallback_auto">Auto</string>
+    <string name="automix_fallback_crossfade_subtitle">Usado quando o Automix não consegue analisar ou mixar uma faixa. Auto usa uma transição de 6 segundos.</string>
 </resources>

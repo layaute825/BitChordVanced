@@ -1560,4 +1560,6 @@
     <string name="drive_backup_row_subtitle">Replay auf all deinen Geräten sichern und synchronisieren</string>
     <string name="drive_over_cellular">Über mobile Daten synchronisieren</string>
     <string name="drive_over_cellular_subtitle">Wenn aus, warten automatische Synchronisierungen auf WLAN</string>
+    <string name="automix_fallback_auto">Auto</string>
+    <string name="automix_fallback_crossfade_subtitle">Wird verwendet, wenn Automix einen Titel nicht analysieren oder mischen kann. Auto verwendet eine Überblendung von 6 Sekunden.</string>
 </resources>

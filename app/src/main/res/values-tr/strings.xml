@@ -1517,4 +1517,6 @@
     <string name="drive_backup_row_subtitle">Replay\'i tüm cihazlarınızda yedekleyin ve eşitleyin</string>
     <string name="drive_over_cellular">Mobil veriyle eşitle</string>
     <string name="drive_over_cellular_subtitle">Kapalıyken otomatik eşitlemeler Wi-Fi\'ı bekler</string>
+    <string name="automix_fallback_auto">Auto</string>
+    <string name="automix_fallback_crossfade_subtitle">Automix bir parçayı analiz edemediğinde veya miksleyemediğinde kullanılır. Auto, 6 saniyelik çapraz geçiş kullanır.</string>
 </resources>

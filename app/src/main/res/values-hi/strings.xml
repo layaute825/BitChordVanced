@@ -1560,4 +1560,6 @@
     <string name="drive_backup_row_subtitle">अपने सभी डिवाइस पर Replay का बैकअप और सिंक करें</string>
     <string name="drive_over_cellular">मोबाइल डेटा पर सिंक करें</string>
     <string name="drive_over_cellular_subtitle">बंद होने पर, ऑटो सिंक Wi-Fi का इंतज़ार करते हैं</string>
+    <string name="automix_fallback_auto">Auto</string>
+    <string name="automix_fallback_crossfade_subtitle">जब Automix किसी ट्रैक का विश्लेषण या मिक्स नहीं कर सकता, तब इसका उपयोग होता है। Auto 6 सेकंड का क्रॉसफ़ेड इस्तेमाल करता है।</string>
 </resources>
