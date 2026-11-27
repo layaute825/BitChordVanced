@@ -56,6 +56,8 @@ object InnerTubeXResolver {
         /** InnerTubeX's catalog id for the exact client variant; what exclusions key on. */
         val profileId: String,
         val headers: Map<String, String>,
+        /** Taken from PlayerResponse.videoDetails.isLiveContent, not inferred from the media URL. */
+        val isLive: Boolean,
     )
 
     /**
@@ -272,6 +274,7 @@ object InnerTubeXResolver {
             clientName = stream.clientName,
             profileId = stream.profileId,
             headers = stream.headers,
+            isLive = stream.mediaMetadata?.isLive == true,
         )
         if (minted.size >= MAX_REMEMBERED) minted.clear()
         minted[extracted.url] = extracted
