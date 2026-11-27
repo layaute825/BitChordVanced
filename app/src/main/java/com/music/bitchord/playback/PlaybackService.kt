@@ -7211,7 +7211,7 @@ class PlaybackService : MediaLibraryService() {
             // upload with no finite runtime). Searching for a catalogue song
             // can replace it after the 15s music-only timeout; keep its own
             // audio stream instead and release the playback source immediately.
-            if (video.durationMillis() == 0L) {
+            if (video.durationMillis() == 0L || StreamResolver.isLiveVideo(video.videoId)) {
                 TrackLog.d(
                     "BitChord",
                     "music-only: durationless video treated as live/unknown; keeping its own audio",
