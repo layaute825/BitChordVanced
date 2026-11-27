@@ -802,24 +802,29 @@ fun SettingsScreen(
                     )
                 }
             }
-            // Automix decides its own length from each pair of tracks —
-            // tempo, key, structure — so it replaces the manual slider rather
-            // than needing it set to anything first.
-            if (!smartFade) {
-                val crossfadeTitle = stringResource(R.string.crossfade)
-                row(crossfadeTitle, "fade", "gapless") {
-                    BypassedByBitPerfect(bitPerfectReady) {
-                        SliderRow(
-                            icon = SfIcons.Waves,
-                            title = crossfadeTitle,
-                            subtitle = stringResource(R.string.crossfade_subtitle),
-                            value = if (crossfade == 0) stringResource(R.string.off) else "${crossfade}s",
-                            sliderValue = crossfade.toFloat(),
-                            onSliderValue = { AppSettings.setCrossfadeSeconds(it.roundToInt()) },
-                            valueRange = 0f..12f,
-                            steps = 11,
-                        )
-                    }
+            // Automix plans its own length whenever it can. This setting stays
+            // available because it is the fallback for video tracks and pairs
+            // the planner cannot mix; zero selects Automix's six-second default.
+            val crossfadeTitle = stringResource(R.string.crossfade)
+            row(crossfadeTitle, "fade", "gapless", "automix", "fallback") {
+                BypassedByBitPerfect(bitPerfectReady) {
+                    SliderRow(
+                        icon = SfIcons.Waves,
+                        title = crossfadeTitle,
+                        subtitle = stringResource(
+                            if (smartFade) R.string.automix_fallback_crossfade_subtitle
+                            else R.string.crossfade_subtitle,
+                        ),
+                        value = when {
+                            crossfade > 0 -> "${crossfade}s"
+                            smartFade -> stringResource(R.string.automix_fallback_auto)
+                            else -> stringResource(R.string.off)
+                        },
+                        sliderValue = crossfade.toFloat(),
+                        onSliderValue = { AppSettings.setCrossfadeSeconds(it.roundToInt()) },
+                        valueRange = 0f..12f,
+                        steps = 11,
+                    )
                 }
             }
             val automixTitle = stringResource(R.string.automix)

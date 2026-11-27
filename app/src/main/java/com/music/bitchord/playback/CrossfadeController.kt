@@ -344,6 +344,9 @@ class CrossfadeController(
      */
     private var smartFadeActive = false
 
+    /** A plain crossfade used because Automix declined or cannot process this pair. */
+    private var automixFallbackActive = false
+
     /**
      * Where the incoming track is cued when the lap hands the queue over, in
      * its own timeline ms. Standard fades always leave this at 0 — a plain
@@ -1147,8 +1150,11 @@ class CrossfadeController(
         // analysis and cueing are deliberately never applied to either side
         // of a transition involving a video row.
         if (currentItem.isVideoOrigin || nextItem.isVideoOrigin) {
-            AppSettings.smartTransitionWindow.value = null
-            AppSettings.smartMixInProgress.value = false
+            if (lastPlanVerdict != "video-fallback") {
+                lastPlanVerdict = "video-fallback"
+                Log.d(TAG, "Automix cannot process a video-origin item; using the configured crossfade")
+            }
+            scheduleAutomixFallback(duration, markerOnly)
             return
         }
         val nextDuration = nextItemDurationMs(nextIndex, nextItem)
@@ -1285,10 +1291,20 @@ class CrossfadeController(
             null
         }
 
-        if (plan.blocked || markerOnly) return
+        if (markerOnly) return
+        if (plan.blocked) {
+            scheduleAutomixFallback(duration)
+            return
+        }
 
         val fade = plan.fadeMs
-        if (fade <= 0L) return
+        if (fade <= 0L) {
+            // GAPLESS is an intentional planner decision, not a failed mix.
+            if (plan.transitionStyle != TransitionStyle.GAPLESS) {
+                scheduleAutomixFallback(duration)
+            }
+            return
+        }
 
         val transitionStartMs = (plan.transitionStart * 1000).roundToLong()
         plannedTransition = currentItem.mediaId to transitionStartMs
@@ -1331,6 +1347,49 @@ class CrossfadeController(
             beatMs = beatMs,
             renderStyle = renderFor(plan, advanced),
             plan = plan,
+        )
+    }
+
+    /**
+     * Runs the listener's ordinary crossfade when Automix cannot make a mix.
+     *
+     * Video-origin items cannot be analyzed or cued by Automix, and the planner
+     * can explicitly decline other pairs (spoken/live material, short tracks,
+     * etc.). Those cases should still get the same two-player crossfade as when
+     * Automix is disabled. A zero slider value means Auto here: use the same
+     * six-second default that Automix already uses while analysis is pending.
+     */
+    private fun scheduleAutomixFallback(duration: Long, markerOnly: Boolean = false) {
+        AppSettings.smartTransitionWindow.value = null
+        AppSettings.smartMixInProgress.value = false
+        if (markerOnly) return
+
+        val player = active()
+        val item = player.currentMediaItem ?: return
+        if (!player.hasNextMediaItem()) return
+        val effectiveDuration = duration.takeIf { it != C.TIME_UNSET && it > 0L }
+            ?: player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
+            ?: return
+        val requestedFadeMs = configuredFadeMs().takeIf { it > 0L }
+            ?: (DEFAULT_SMART_FALLBACK_SECONDS * 1000.0).roundToLong()
+        val fade = minOf(requestedFadeMs, effectiveDuration / 3).coerceAtLeast(0L)
+        if (fade <= 0L) return
+
+        plannedTransition = item.mediaId to (effectiveDuration - fade)
+        val remaining = effectiveDuration - player.currentPosition
+        if (SleepTimer.afterTrack.value) {
+            if (remaining > fade) return
+            beginSleepFadeOut(fade)
+            return
+        }
+
+        holdAhead(player, effectiveDuration)
+        if (remaining > fade + ARM_LEAD_MS) return
+        begin(
+            fade,
+            endMs = effectiveDuration,
+            smart = false,
+            automixFallback = true,
         )
     }
 
@@ -1493,6 +1552,7 @@ class CrossfadeController(
         beatMs: Long = 0L,
         renderStyle: Render = Render(),
         plan: TransitionPlan? = null,
+        automixFallback: Boolean = false,
     ): Boolean {
         val out = active()
         val into = standby()
@@ -1506,6 +1566,7 @@ class CrossfadeController(
         fadeMs = fade
         fadeEndMs = endMs
         smartFadeActive = smart
+        automixFallbackActive = automixFallback
         incomingCueTimeMs = cueTimeMs.coerceAtLeast(0L)
         incomingPlaybackRate = playbackRate
         outgoingPlaybackRate = outgoingRate
@@ -1533,7 +1594,7 @@ class CrossfadeController(
 
         Log.d(
             TAG,
-            "arm ${if (smart) "smart" else "standard"} fade=${fade}ms end=${endMs}ms " +
+            "arm ${if (smart) "smart" else if (automixFallback) "automix fallback" else "standard"} fade=${fade}ms end=${endMs}ms " +
                 "cue=${incomingCueTimeMs}ms rate=$incomingPlaybackRate at=${out.currentPosition}ms " +
                 "style=${render.style} bassSwap=${render.bassSwap}@${render.swapAt} " +
                 "advanced=${render.advanced} lock=${render.phaseLock} handoff=${render.handoffAt} " +
@@ -1977,7 +2038,7 @@ class CrossfadeController(
         // setting that actually started it — a Automix normally runs with
         // [configuredFadeMs] at zero, and reading that as "turned off" would
         // end every Automix on its first tick.
-        val settingSwitchedOff = if (smartFadeActive) {
+        val settingSwitchedOff = if (smartFadeActive || automixFallbackActive) {
             !AppSettings.smartFadeEnabled.value
         } else {
             configuredFadeMs() <= 0L
@@ -3160,6 +3221,7 @@ class CrossfadeController(
         outgoingItemIndex = C.INDEX_UNSET
         queuedItemCount = 0
         incomingCueTimeMs = 0L
+        automixFallbackActive = false
         incomingPlaybackRate = 1.0
         outgoingPlaybackRate = 1.0
         rampSteps = 0
@@ -3171,7 +3233,11 @@ class CrossfadeController(
 
     /** Still a next track, still playing, still switched on — by whichever setting armed this one. */
     private fun stillWorthFading(): Boolean {
-        val stillOn = if (smartFadeActive) AppSettings.smartFadeEnabled.value else configuredFadeMs() > 0L
+        val stillOn = if (smartFadeActive || automixFallbackActive) {
+            AppSettings.smartFadeEnabled.value
+        } else {
+            configuredFadeMs() > 0L
+        }
         return stillOn && (outgoing ?: active()).hasNextMediaItem()
     }
 
@@ -3992,10 +4058,8 @@ class CrossfadeController(
         const val TAG = "BitChordCrossfade"
 
         /**
-         * Used only before a pair has been analysed, or when the evidence is
-         * too weak for more than a plain fade — see [considerSmartTransition].
-         * Once real analysis lands, the overlap is sized from tempo and
-         * structure instead and this is never read.
+         * Default fixed crossfade used while Automix is waiting for analysis,
+         * or when it cannot plan a mix and the manual crossfade is set to Auto.
          */
         const val DEFAULT_SMART_FALLBACK_SECONDS = 6.0
 
