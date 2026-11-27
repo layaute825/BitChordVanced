@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.os.bundleOf
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
@@ -31,6 +32,7 @@ import com.music.bitchord.data.model.PlaybackSourceType
 import com.music.bitchord.data.model.QueueEntryIdentity
 import com.music.bitchord.data.model.QueueTier
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.isDurationlessVideo
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.model.youTubeThumbnailFallback
 import com.music.bitchord.data.sources.SourceKind
@@ -764,6 +766,8 @@ private fun Song.matchQuery(): String = buildString {
     // track keeps [isVideoOrigin] for AutoMix, but is intentionally audio here
     // so the normal source-quality upgrade path can improve it.
     if (isVideo) append("&m=1")
+    // Unknown-runtime video rows are live candidates: carry the decision to the loader thread.
+    if (isDurationlessVideo()) append("&$LIVE_AUDIO_ONLY_PARAMETER=1")
 }
 
 /**
@@ -828,9 +832,11 @@ fun Song.toMediaItem(): MediaItem {
         // reach.
         else -> "bitchord://watch?v=$videoId${matchQuery()}"
     }
+    val forceLiveAudioOnly = offlineUri == null && sourceTrack == null && isDurationlessVideo()
     return MediaItem.Builder()
         .setMediaId(videoId)
         .setUri(resolvePlaybackUri(uriString, localPath))
+        .apply { if (forceLiveAudioOnly) setMimeType(MimeTypes.APPLICATION_M3U8) }
     .setMediaMetadata(
         MediaMetadata.Builder()
             .setTitle(title)
@@ -966,6 +972,7 @@ fun Song.hasYouTubeOriginal(): Boolean =
 
 /** A playback URI carrying this is explicitly requested YouTube, never a substitute. */
 const val DIRECT_YOUTUBE_PARAMETER = "direct_youtube"
+const val LIVE_AUDIO_ONLY_PARAMETER = "live_audio"
 
 /**
  * Which track a playback URI is for, as a media id — the inverse of the URI
