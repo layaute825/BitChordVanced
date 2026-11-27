@@ -75,6 +75,7 @@ object StreamResolver {
      */
     fun forgetResolved() {
         recent.clear()
+        manifestMimeTypes.clear()
     }
 
     private const val TAG = "BitChord"
@@ -291,7 +292,7 @@ object StreamResolver {
         // real figure is ever known.
         NerdStats.onStreamPicked(videoId, stream.kbps)
         stream.loudnessDb?.let { loudness[videoId] = it }
-        remember(videoId, stream.url)
+        remember(videoId, stream)
         return stream.url
     }
 
@@ -441,7 +442,9 @@ object StreamResolver {
     private suspend fun resolveUncached(videoId: String): Stream {
         val resolveStart = MonotonicClock.nowMs()
         val stream = try {
-            val found = timed("$videoId InnerTubeX") { innerTubeXStreamAllowingUploads(videoId) }
+            val found = timed("$videoId InnerTubeX") {
+                innerTubeXStreamAllowingUploads(videoId, allowHls = true)
+            }
             when {
                 found == null -> {
                     TrackLog.w(TAG, "InnerTubeX found no usable stream for $videoId; falling back to extraction")
@@ -521,18 +524,29 @@ object StreamResolver {
         uploaded: Boolean = false,
         escalateToUpload: Boolean = true,
         playRefusedUpload: Boolean = false,
+        allowHls: Boolean = false,
     ): Stream? {
         val skip = mutableSetOf<String>()
         repeat(INNERTUBEX_ATTEMPTS) { attempt ->
             val found = try {
-                InnerTubeXResolver.extract(videoId, maxKbps, skip, requireM4a, uploaded, premiumAudio())
+                InnerTubeXResolver.extract(
+                    videoId,
+                    maxKbps,
+                    skip,
+                    requireM4a,
+                    uploaded,
+                    premiumAudio(),
+                    allowHls = allowHls,
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 TrackLog.w(TAG, "InnerTubeX failed for $videoId: ${e.javaClass.simpleName}: ${e.message}")
                 return null
             } ?: return null
-            val verdict = timed("$videoId InnerTubeX ${found.profileId} probe") { probe(found.url) }
+            val verdict = timed("$videoId InnerTubeX ${found.profileId} probe") {
+                probe(found.url, found.mimeType)
+            }
             if (verdict == Probe.OK) {
                 TrackLog.d(TAG, "resolved $videoId via InnerTubeX ${found.profileId} @ ${found.kbps}kbps")
                 return Stream(found.url, found.kbps, found.mimeType, found.loudnessDb)
@@ -548,17 +562,30 @@ object StreamResolver {
             if (escalateToUpload && attempt == 0 && !uploaded &&
                 verdict == Probe.REFUSED && !Innertube.cookie.isNullOrBlank()
             ) {
-                askAsUpload(videoId, maxKbps, requireM4a)?.let { return it }
+                askAsUpload(videoId, maxKbps, requireM4a, allowHls)?.let { return it }
             }
         }
         return null
     }
 
     /** One ask for [videoId] as the user's own upload; a hit is remembered in [UploadedTracks]. */
-    private suspend fun askAsUpload(videoId: String, maxKbps: Int, requireM4a: Boolean): Stream? {
+    private suspend fun askAsUpload(
+        videoId: String,
+        maxKbps: Int,
+        requireM4a: Boolean,
+        allowHls: Boolean = false,
+    ): Stream? {
         TrackLog.d(TAG, "first stream for $videoId was refused; asking as an upload")
         val found = try {
-            InnerTubeXResolver.extract(videoId, maxKbps, emptySet(), requireM4a, uploaded = true, premium = premiumAudio())
+            InnerTubeXResolver.extract(
+                videoId,
+                maxKbps,
+                emptySet(),
+                requireM4a,
+                uploaded = true,
+                premium = premiumAudio(),
+                allowHls = allowHls,
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -569,7 +596,9 @@ object StreamResolver {
             TrackLog.w(TAG, "no stream for $videoId when asked as an upload")
             return null
         }
-        val verdict = timed("$videoId InnerTubeX ${found.profileId} upload probe") { probe(found.url) }
+        val verdict = timed("$videoId InnerTubeX ${found.profileId} upload probe") {
+            probe(found.url, found.mimeType)
+        }
         if (verdict != Probe.OK) {
             TrackLog.w(TAG, "InnerTubeX ${found.profileId} as an upload for $videoId: $verdict")
             return null
@@ -590,15 +619,30 @@ object StreamResolver {
         videoId: String,
         maxKbps: Int = maxKbps(),
         requireM4a: Boolean = false,
+        allowHls: Boolean = false,
     ): Stream? {
         val known = UploadedTracks.contains(videoId)
         if (known) {
-            innerTubeXStream(videoId, maxKbps, requireM4a, uploaded = true, playRefusedUpload = true)
+            innerTubeXStream(
+                videoId,
+                maxKbps,
+                requireM4a,
+                uploaded = true,
+                playRefusedUpload = true,
+                allowHls = allowHls,
+            )
                 ?.let { return it }
             TrackLog.w(TAG, "$videoId is marked as an upload but did not resolve as one; trying an ordinary ask")
-            return innerTubeXStream(videoId, maxKbps, requireM4a, uploaded = false, escalateToUpload = false)
+            return innerTubeXStream(
+                videoId,
+                maxKbps,
+                requireM4a,
+                uploaded = false,
+                escalateToUpload = false,
+                allowHls = allowHls,
+            )
         }
-        return innerTubeXStream(videoId, maxKbps, requireM4a)
+        return innerTubeXStream(videoId, maxKbps, requireM4a, allowHls = allowHls)
     }
 
     /** The headers a media fetch for [url] must carry to match whoever minted it. */
@@ -866,7 +910,9 @@ object StreamResolver {
      * [PlayerClient.forStreamUrl] — so this tests the request that matters
      * rather than a more favourable version of it.
      */
-    private fun probe(url: String): Probe {
+    private fun probe(url: String, mimeType: String? = null): Probe {
+        if (mimeType != null && isHlsMimeType(mimeType)) return probeHlsManifest(url)
+
         val length = url.toHttpUrlOrNull()?.queryParameter("clen")?.toLongOrNull()
         val start = if (length != null && length > AUTH_BOUNDARY_BYTES + PROBE_READ_BYTES) AUTH_BOUNDARY_BYTES else 0L
         // A host with no range cap of its own reports Long.MAX_VALUE, which
@@ -911,6 +957,51 @@ object StreamResolver {
             }
         } catch (e: Exception) {
             TrackLog.w(TAG, "probe failed: ${e.message}")
+            Probe.UNREACHABLE
+        }
+    }
+
+    private fun isHlsMimeType(mimeType: String): Boolean =
+        mimeType.substringBefore(';').trim().lowercase() in setOf(
+            "application/x-mpegurl",
+            "application/vnd.apple.mpegurl",
+            "audio/mpegurl",
+        )
+
+    /**
+     * A manifest is not an audio file: its response type is an application
+     * MIME and its body is a short text index, not 16 KiB of audio. Validate
+     * the HLS signature instead of sending it through the progressive probe.
+     */
+    private fun probeHlsManifest(url: String): Probe {
+        val builder = okhttp3.Request.Builder().url(url)
+        val sentHeaders = mediaHeadersFor(url)
+        sentHeaders.forEach { (name, value) -> builder.header(name, value) }
+        return try {
+            prober.newCall(builder.build()).execute().use { response ->
+                val verdict = when {
+                    response.code in REFUSAL_CODES -> Probe.REFUSED
+                    response.code !in 200..299 -> Probe.UNREACHABLE
+                    else -> {
+                        val firstLine = response.body?.string()
+                            ?.lineSequence()
+                            ?.firstOrNull()
+                            ?.removePrefix("\uFEFF")
+                            ?.trim()
+                        if (firstLine == "#EXTM3U") Probe.OK else Probe.REFUSED
+                    }
+                }
+                if (verdict != Probe.OK) {
+                    TrackLog.w(
+                        TAG,
+                        "HLS manifest probe $verdict: HTTP ${response.code} " +
+                            "${describeMediaUrl(url)} sent=${sentHeaders.keys.sorted()}",
+                    )
+                }
+                verdict
+            }
+        } catch (e: Exception) {
+            TrackLog.w(TAG, "HLS manifest probe failed: ${e.message}")
             Probe.UNREACHABLE
         }
     }
@@ -1262,12 +1353,25 @@ object StreamResolver {
      */
     private val recent = ConcurrentHashMap<String, Resolved>()
 
+    /** Manifest MIME associated with a resolved URL; playback needs it before the first byte. */
+    private val manifestMimeTypes = ConcurrentHashMap<String, String>()
+
+    /** Explicit manifest type for a URL resolved by this object, if any. */
+    fun manifestMimeTypeFor(url: String): String? = manifestMimeTypes[url]
+
     private const val URL_TTL_MS = 20 * 60 * 1000L
 
     /** Enough for the queue in hand; this is a latency cache, not a store. */
     private const val MAX_REMEMBERED = 32
 
-    private fun remember(videoId: String, url: String) {
+    private fun remember(videoId: String, stream: Stream) {
+        val url = stream.url
+        if (isHlsMimeType(stream.mimeType)) {
+            if (manifestMimeTypes.size >= MAX_REMEMBERED * 2) manifestMimeTypes.clear()
+            manifestMimeTypes[url] = "application/x-mpegURL"
+        } else {
+            manifestMimeTypes.remove(url)
+        }
         if (recent.size >= MAX_REMEMBERED) {
             val cutoff = MonotonicClock.nowMs() - URL_TTL_MS
             recent.entries.removeAll { it.value.at < cutoff }
