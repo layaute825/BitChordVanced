@@ -441,18 +441,24 @@ object StreamResolver {
     private suspend fun resolveUncached(videoId: String): Stream {
         val resolveStart = MonotonicClock.nowMs()
         val stream = try {
-            timed("$videoId InnerTubeX") { innerTubeXStreamAllowingUploads(videoId) }
-                ?.let { found ->
-                    // A live broadcast's adaptive URL is one window of a stream
-                    // that keeps growing: it plays the few seconds that exist
-                    // and then ends. Live is played from its HLS playlist.
-                    if (!isLiveUrl(found.url)) found
-                    else timed("$videoId live HLS") { liveHlsStream(videoId) } ?: found
-                }
-                ?: run {
+            val found = timed("$videoId InnerTubeX") { innerTubeXStreamAllowingUploads(videoId) }
+            when {
+                found == null -> {
                     TrackLog.w(TAG, "InnerTubeX found no usable stream for $videoId; falling back to extraction")
                     timed("$videoId newPipeStream") { newPipeStream(videoId, ::pickForQuality) }
                 }
+                !isLiveUrl(found.url) -> found
+                else -> {
+                    // A bounded googlevideo URL is only the current window of a live
+                    // broadcast. Never fall back to it: a live must use its HLS
+                    // playlist, including when InnerTubeX could not expose HLS.
+                    timed("$videoId live HLS") { liveHlsStream(videoId) }
+                        ?: run {
+                            TrackLog.w(TAG, "InnerTubeX returned a live window but no HLS URL for $videoId; retrying through NewPipe")
+                            timed("$videoId NewPipe live HLS") { newPipeStream(videoId, ::pickForQuality) }
+                        }
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: LinkageError) {
@@ -1063,6 +1069,9 @@ object StreamResolver {
      * or has none. Media3 plays it through `HlsMediaSource` — the `.m3u8` ending
      * is what [com.music.bitchord.playback.StreamContainer.manifestMimeOf] reads.
      */
+    /** Resolve the moving picture's live playlist as well as the audio's. */
+    suspend fun resolveLiveHlsStream(videoId: String): Stream? = liveHlsStream(videoId)
+
     private suspend fun liveHlsStream(videoId: String): Stream? = try {
         extractionGate.withLock {
             withContext(Dispatchers.IO) {
@@ -1161,6 +1170,20 @@ object StreamResolver {
                 "https://www.youtube.com/watch?v=$videoId",
             )
             extractor.fetchPage()
+            val live = extractor.streamType == StreamType.LIVE_STREAM ||
+                extractor.streamType == StreamType.AUDIO_LIVE_STREAM
+            if (live) {
+                // YouTube lives are delivered as a rolling HLS playlist. A
+                // progressive audio URL is only a short moving window and ends.
+                val playlist = extractor.hlsUrl
+                if (playlist.isBlank()) throw IOException("YouTube live broadcast has no HLS playlist")
+                TrackLog.d(TAG, "NewPipe resolved live stream $videoId through HLS")
+                return@withContext Stream(
+                    url = playlist,
+                    kbps = 0,
+                    mimeType = "application/x-mpegURL",
+                )
+            }
             val candidates = extractor.audioStreams
                 // Progressive only — DASH/HLS entries carry a manifest, not a URL.
                 .filter {
