@@ -452,7 +452,7 @@ object StreamResolver {
                     timed("$videoId newPipeStream") { newPipeStream(videoId, ::pickForQuality) }
                 }
                 isHlsMimeType(found.mimeType) -> found
-                !found.isLive && !isLiveUrl(found.url) -> found
+                !isLiveStream(found.isLive, found.url) -> found
                 else -> {
                     rememberLiveVideo(videoId)
                     // Some YouTube player clients report a live audio window
@@ -1193,6 +1193,10 @@ object StreamResolver {
         return parsed.queryParameter("live") == "1" ||
             parsed.queryParameter("source") == "yt_live_broadcast"
     }
+
+    /** PlayerResponse's live flag outranks URL heuristics, which some clients omit. */
+    internal fun isLiveStream(isLiveFromMetadata: Boolean, url: String): Boolean =
+        isLiveFromMetadata || isLiveUrl(url)
 
     /**
      * The HLS playlist of a live broadcast, or null when [videoId] is not live
