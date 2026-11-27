@@ -76,6 +76,7 @@ object StreamResolver {
     fun forgetResolved() {
         recent.clear()
         manifestMimeTypes.clear()
+        liveVideoIds.clear()
     }
 
     private const val TAG = "BitChord"
@@ -451,7 +452,17 @@ object StreamResolver {
                     timed("$videoId newPipeStream") { newPipeStream(videoId, ::pickForQuality) }
                 }
                 isHlsMimeType(found.mimeType) -> found
-                !isLiveUrl(found.url) -> found
+                !found.isLive && !isLiveUrl(found.url) -> found
+                else -> {
+                    rememberLiveVideo(videoId)
+                    // Some YouTube player clients report a live audio window
+                    // without live=1/source=yt_live_broadcast in its URL. The
+                    // authoritative PlayerResponse flag is carried by found.isLive.
+                    // Never play that bounded window as a finite audio file.
+                    TrackLog.w(TAG, "InnerTubeX identified $videoId as live but returned a bounded audio URL; switching to HLS")
+                    timed("$videoId live HLS") { liveHlsStream(videoId) }
+                        ?: timed("$videoId NewPipe live HLS") { newPipeStream(videoId, ::pickForQuality) }
+                }
                 else -> {
                     // A bounded googlevideo URL is only the current window of a live
                     // broadcast. Never fall back to it: a live must use its HLS
@@ -545,18 +556,42 @@ object StreamResolver {
                 TrackLog.w(TAG, "InnerTubeX failed for $videoId: ${e.javaClass.simpleName}: ${e.message}")
                 return null
             } ?: return null
+            if (allowHls && found.isLive && !isHlsMimeType(found.mimeType)) {
+                // The URL is a short rolling window, not a playable long-lived
+                // live source. Ask another client for its HLS manifest instead
+                // of accepting a stream that will reach EOF seconds later.
+                rememberLiveVideo(videoId)
+                TrackLog.w(
+                    TAG,
+                    "InnerTubeX ${found.profileId} returned only a bounded live audio window for $videoId; trying another client",
+                )
+                skip += found.profileId
+                return@repeat
+            }
             val verdict = timed("$videoId InnerTubeX ${found.profileId} probe") {
                 probe(found.url, found.mimeType)
             }
             if (verdict == Probe.OK) {
                 TrackLog.d(TAG, "resolved $videoId via InnerTubeX ${found.profileId} @ ${found.kbps}kbps")
-                return Stream(found.url, found.kbps, found.mimeType, found.loudnessDb)
+                return Stream(
+                    found.url,
+                    found.kbps,
+                    found.mimeType,
+                    found.loudnessDb,
+                    isLive = found.isLive,
+                )
             }
             TrackLog.w(TAG, "InnerTubeX ${found.profileId} minted an unusable URL for $videoId: $verdict")
 
             if (playRefusedUpload && uploaded && verdict == Probe.REFUSED) {
                 TrackLog.w(TAG, "playing $videoId's upload stream despite the probe: it is the only copy")
-                return Stream(found.url, found.kbps, found.mimeType, found.loudnessDb)
+                return Stream(
+                    found.url,
+                    found.kbps,
+                    found.mimeType,
+                    found.loudnessDb,
+                    isLive = found.isLive,
+                )
             }
             skip += found.profileId
 
@@ -606,7 +641,13 @@ object StreamResolver {
         }
         TrackLog.d(TAG, "resolved $videoId as an upload via InnerTubeX ${found.profileId} @ ${found.kbps}kbps")
         UploadedTracks.mark(videoId)
-        return Stream(found.url, found.kbps, found.mimeType, found.loudnessDb)
+        return Stream(
+            found.url,
+            found.kbps,
+            found.mimeType,
+            found.loudnessDb,
+            isLive = found.isLive,
+        )
     }
 
     /**
@@ -663,7 +704,13 @@ object StreamResolver {
      * be. Playback only ever needs the URL; a download needs the rest of it to
      * name the file and declare its type.
      */
-    class Stream(val url: String, val kbps: Int, val mimeType: String, val loudnessDb: Double? = null) {
+    class Stream(
+        val url: String,
+        val kbps: Int,
+        val mimeType: String,
+        val loudnessDb: Double? = null,
+        val isLive: Boolean = false,
+    ) {
 
         /**
          * The container these bytes are actually in, which is not always what
@@ -1172,7 +1219,13 @@ object StreamResolver {
                     extractor.streamType == StreamType.AUDIO_LIVE_STREAM
                 extractor.hlsUrl.takeIf { live && it.isNotBlank() }?.let {
                     TrackLog.d(TAG, "live stream $videoId served from its HLS playlist")
-                    Stream(url = it, kbps = 0, mimeType = "application/x-mpegURL")
+                    rememberLiveVideo(videoId)
+                    Stream(
+                        url = it,
+                        kbps = 0,
+                        mimeType = "application/x-mpegURL",
+                        isLive = true,
+                    )
                 }
             }
         }
@@ -1267,10 +1320,12 @@ object StreamResolver {
                 val playlist = extractor.hlsUrl
                 if (playlist.isBlank()) throw IOException("YouTube live broadcast has no HLS playlist")
                 TrackLog.d(TAG, "NewPipe resolved live stream $videoId through HLS")
+                rememberLiveVideo(videoId)
                 return@withContext Stream(
                     url = playlist,
                     kbps = 0,
                     mimeType = "application/x-mpegURL",
+                    isLive = true,
                 )
             }
             val candidates = extractor.audioStreams
@@ -1357,6 +1412,17 @@ object StreamResolver {
     /** Manifest MIME associated with a resolved URL; playback needs it before the first byte. */
     private val manifestMimeTypes = ConcurrentHashMap<String, String>()
 
+    /** Video ids independently confirmed live by YouTube's player response or NewPipe. */
+    private val liveVideoIds = ConcurrentHashMap.newKeySet<String>()
+
+    /** Whether [videoId] is a live broadcast, based on stream metadata rather than its URL shape. */
+    fun isLiveVideo(videoId: String): Boolean = videoId in liveVideoIds
+
+    private fun rememberLiveVideo(videoId: String) {
+        if (liveVideoIds.size >= MAX_REMEMBERED * 2) liveVideoIds.clear()
+        liveVideoIds += videoId
+    }
+
     /** Explicit manifest type for a URL resolved by this object, if any. */
     fun manifestMimeTypeFor(url: String): String? = manifestMimeTypes[url]
 
@@ -1367,6 +1433,11 @@ object StreamResolver {
 
     private fun remember(videoId: String, stream: Stream) {
         val url = stream.url
+        if (stream.isLive || isLiveUrl(url) || isHlsMimeType(stream.mimeType)) {
+            rememberLiveVideo(videoId)
+        } else {
+            liveVideoIds.remove(videoId)
+        }
         if (isHlsMimeType(stream.mimeType)) {
             if (manifestMimeTypes.size >= MAX_REMEMBERED * 2) manifestMimeTypes.clear()
             manifestMimeTypes[url] = "application/x-mpegURL"
