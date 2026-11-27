@@ -138,6 +138,7 @@ import com.music.bitchord.data.innertube.PlayerClient
 import com.music.bitchord.data.innertube.StreamResolver
 import com.music.bitchord.data.model.LikeStatus
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.model.isUnresolvedSpotify
 import com.music.bitchord.data.remote.RemoteArtworkStore
 import com.music.bitchord.data.scrobbling.LastFM
@@ -7206,6 +7207,19 @@ class PlaybackService : MediaLibraryService() {
             val item = exoPlayer.getMediaItemAt(index)
             if (!MusicOnlyPlayback.wants(item)) continue
             val video = item.toSong()
+            // A durationless video row is commonly a live broadcast (or an
+            // upload with no finite runtime). Searching for a catalogue song
+            // can replace it after the 15s music-only timeout; keep its own
+            // audio stream instead and release the playback source immediately.
+            if (video.durationMillis() == 0L) {
+                TrackLog.d(
+                    "BitChord",
+                    "music-only: durationless video treated as live/unknown; keeping its own audio",
+                    about = video.videoId,
+                )
+                MusicOnlyPlayback.settle(video.videoId)
+                continue
+            }
             val audio = YtMusicRepository.cachedAudioVersion(video.videoId)
             when {
                 audio == null -> lookUpMusicOnly(video)
