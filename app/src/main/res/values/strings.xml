@@ -274,6 +274,8 @@
     <string name="blocking">Blocking</string>
     <string name="crossfade">Crossfade</string>
     <string name="crossfade_subtitle">Blends one track into the next</string>
+    <string name="automix_fallback_auto">Auto</string>
+    <string name="automix_fallback_crossfade_subtitle">Used when Automix can't analyze or mix a track. Auto uses a 6-second crossfade.</string>
     <string name="automix">Automix [BETA]</string>
     <string name="automix_art_transition">Art transition</string>
     <string name="automix_art_transition_subtitle">Smoothly blends cover art between tracks during AutoMix.</string>
@@ -934,8 +936,8 @@
     <string name="version_cut_fetching">fetching</string>
     <string name="version_cut_measuring">analyzing</string>
     <string name="version_cut_aligned">aligned</string>
-    <string name="automix_enabled_subtitle">Times and blends every transition from the tracks themselves. Turn it off if the phone gets hot or playback stutters.</string>
-    <string name="automix_disabled_subtitle">Times and blends transitions automatically, without a slider. Performance may vary on slower devices.</string>
+    <string name="automix_enabled_subtitle">Builds transitions from the tracks themselves, falling back to your crossfade setting when it can't.</string>
+    <string name="automix_disabled_subtitle">Uses the crossfade duration set above for each track change.</string>
     <string name="automix_models_downloading">Downloading Automix (%1$d MB)… %2$d%%. Songs crossfade normally until it finishes.</string>
     <string name="automix_model">Automix model</string>
     <string name="automix_model_missing">Not downloaded. Automix fetches it when you turn it on, or download it now.</string>
