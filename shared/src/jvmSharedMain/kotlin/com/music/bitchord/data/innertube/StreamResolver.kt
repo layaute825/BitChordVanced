@@ -1069,9 +1069,6 @@ object StreamResolver {
      * or has none. Media3 plays it through `HlsMediaSource` — the `.m3u8` ending
      * is what [com.music.bitchord.playback.StreamContainer.manifestMimeOf] reads.
      */
-    /** Resolve the moving picture's live playlist as well as the audio's. */
-    suspend fun resolveLiveHlsStream(videoId: String): Stream? = liveHlsStream(videoId)
-
     private suspend fun liveHlsStream(videoId: String): Stream? = try {
         extractionGate.withLock {
             withContext(Dispatchers.IO) {
