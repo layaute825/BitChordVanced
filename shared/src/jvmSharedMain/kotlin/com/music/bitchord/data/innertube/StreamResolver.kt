@@ -450,6 +450,7 @@ object StreamResolver {
                     TrackLog.w(TAG, "InnerTubeX found no usable stream for $videoId; falling back to extraction")
                     timed("$videoId newPipeStream") { newPipeStream(videoId, ::pickForQuality) }
                 }
+                isHlsMimeType(found.mimeType) -> found
                 !isLiveUrl(found.url) -> found
                 else -> {
                     // A bounded googlevideo URL is only the current window of a live
@@ -961,7 +962,7 @@ object StreamResolver {
         }
     }
 
-    private fun isHlsMimeType(mimeType: String): Boolean =
+    internal fun isHlsMimeType(mimeType: String): Boolean =
         mimeType.substringBefore(';').trim().lowercase() in setOf(
             "application/x-mpegurl",
             "application/vnd.apple.mpegurl",
